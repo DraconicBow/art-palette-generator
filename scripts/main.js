@@ -11,7 +11,7 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
         img.src = event.target.result;
         
         img.onload = function() {
-            const palette = getMainColors(img, 5); // 5 основных цветов
+            const palette = getMainColors(img, 10); // 5 основных цветов
             displayPalette(palette);
         };
     };
