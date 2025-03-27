@@ -1,6 +1,28 @@
-function getMainColors(img, colorCount = 10) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+document.getElementById('imageInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    
+    reader.onload = function(event) {
+        console.log("FileReader loaded");
+        const previewImg = document.getElementById('preview');
+        previewImg.hidden = false;
+        previewImg.src = event.target.result;
+
+        const img = new Image();
+        img.src = event.target.result;
+        
+        img.onload = function() {
+            console.log("Image dimensions:", this.width, "x", this.height);
+            const palette = getMainColors(img, 10);
+            console.log("Generated palette:", palette);
+            displayPalette(palette);
+        };
+    };
+
+    reader.readAsDataURL(file);
+});
     
     // Уменьшаем размер для оптимизации
     const maxSize = 200;
