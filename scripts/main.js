@@ -38,7 +38,7 @@ function getDominantColors(img, colorCount = 5) {
         if (a < 128) continue; // Пропускаем прозрачные пиксели
         
         // Группируем цвета с шагом 32 (можно настроить)
-        const key = `${Math.round(r / 32) * 32},${Math.round(g / 32) * 32},${Math.round(b / 32) * 32}`;
+        const key = `${Math.round(r / 10) * 10},${Math.round(g / 10) * 10},${Math.round(b / 10) * 10}`;
         colorMap[key] = (colorMap[key] || 0) + 1;
     }
 
