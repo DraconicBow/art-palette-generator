@@ -3,11 +3,18 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
     const reader = new FileReader();
 
     reader.onload = function(event) {
+        // 1. Показываем превью изображения
+        const previewImg = document.getElementById('preview');
+        previewImg.hidden = false; // Разблокируем элемент <img>
+        previewImg.src = event.target.result; // Загружаем данные изображения
+
+        // 2. Создаем скрытый объект Image для анализа цветов
         const img = new Image();
         img.src = event.target.result;
         
+        // 3. Когда изображение загрузится, генерируем палитру
         img.onload = function() {
-            const palette = getDominantColors(img, 5); // 5 цветов
+            const palette = getDominantColors(img, 5);
             displayPalette(palette);
         };
     };
