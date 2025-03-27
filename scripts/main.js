@@ -31,11 +31,11 @@ function generatePalette(img) {
     const pixels = imageData.data;
     const colorClusters = new Map();
 
-    // Кластеризация цветов
+    // Уменьшенные цветовые кубы для большей точности
     for (let i = 0; i < pixels.length; i += 4) {
         if (pixels[i+3] < 128) continue;
 
-        const key = `${Math.floor(pixels[i]/24)},${Math.floor(pixels[i+1]/24)},${Math.floor(pixels[i+2]/24)}`;
+        const key = `${Math.floor(pixels[i]/18)},${Math.floor(pixels[i+1]/18)},${Math.floor(pixels[i+2]/18)}`;
         
         if (colorClusters.has(key)) {
             const cluster = colorClusters.get(key);
@@ -56,30 +56,31 @@ function generatePalette(img) {
     // Подготовка кандидатов
     const candidates = Array.from(colorClusters.values())
         .sort((a, b) => b.count - a.count)
-        .slice(0, 50)
+        .slice(0, 60)
         .map(cluster => {
             const r = Math.round(cluster.r / cluster.count);
             const g = Math.round(cluster.g / cluster.count);
             const b = Math.round(cluster.b / cluster.count);
             return {
                 r, g, b,
-                luminance: 0.2126*r + 0.7152*g + 0.0722*b
+                luminance: 0.2126*r + 0.7152*g + 0.0722*b,
+                saturation: (Math.max(r, g, b) - Math.min(r, g, b)) / 255
             };
         });
 
     // Фильтрация цветов
     const palette = [];
-    const MIN_DISTANCE = 55;
+    const MIN_DISTANCE = 60;
     
-    // Распределение по яркости
+    // Новое распределение по яркости
     const brightnessGroups = {
-        dark: candidates.filter(c => c.luminance < 90),
-        medium: candidates.filter(c => c.luminance >= 90 && c.luminance < 180),
-        light: candidates.filter(c => c.luminance >= 180)
+        dark: candidates.filter(c => c.luminance < 80),
+        medium: candidates.filter(c => c.luminance >= 80 && c.luminance < 200),
+        light: candidates.filter(c => c.luminance >= 200)
     };
 
-    // Пропорциональное добавление цветов
-    const groupRatios = { dark: 0.2, medium: 0.5, light: 0.3 };
+    // Сбалансированные пропорции
+    const groupRatios = { dark: 0.3, medium: 0.5, light: 0.2 };
     
     for (const [groupName, ratio] of Object.entries(groupRatios)) {
         const group = brightnessGroups[groupName];
@@ -92,21 +93,24 @@ function generatePalette(img) {
                 colorDistance(existing, color) > MIN_DISTANCE
             );
             
-            if (isUnique) palette.push(color);
+            // Приоритет насыщенным цветам
+            if (isUnique && color.saturation > 0.15) {
+                palette.push(color);
+            }
         });
     }
 
-    // Дополнение палитры при необходимости
+    // Дополнение палитры с ограничением яркости
     const remaining = TARGET_COLORS - palette.length;
     if (remaining > 0) {
-        candidates.sort((a, b) => b.luminance - a.luminance);
-        candidates.forEach(color => {
-            if (palette.length >= TARGET_COLORS) return;
-            if (!palette.includes(color)) palette.push(color);
-        });
+        candidates
+            .filter(c => c.luminance < 220) // Исключаем слишком светлые
+            .sort((a, b) => b.saturation - a.saturation)
+            .slice(0, remaining)
+            .forEach(color => palette.push(color));
     }
 
-    // Финальная сортировка
+    // Финальная коррекция баланса
     const finalPalette = palette
         .slice(0, TARGET_COLORS)
         .sort((a, b) => a.luminance - b.luminance);
@@ -115,12 +119,15 @@ function generatePalette(img) {
 }
 
 function colorDistance(c1, c2) {
-    const dr = (c1.r - c2.r) * 0.6;
-    const dg = (c1.g - c2.g) * 0.6;
-    const db = (c1.b - c2.b) * 0.6;
-    return Math.sqrt(dr*dr + dg*dg + db*db);
+    // Улучшенная формула с учетом насыщенности
+    const dr = (c1.r - c2.r) * 0.5;
+    const dg = (c1.g - c2.g) * 0.8;
+    const db = (c1.b - c2.b) * 0.3;
+    const ds = (c1.saturation - c2.saturation) * 50;
+    return Math.sqrt(dr*dr + dg*dg + db*db + ds*ds);
 }
 
+// displayPalette и rgbToHex без изменений
 function displayPalette(colors) {
     const paletteDiv = document.getElementById('palette');
     paletteDiv.innerHTML = '';
