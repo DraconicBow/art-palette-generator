@@ -51,9 +51,9 @@ function generatePalette(img) {
         
         // Группировка цветов в кубы 32x32x32
         const cube = [
-            Math.floor(r / 64),
-            Math.floor(g / 64),
-            Math.floor(b / 64)
+            Math.floor(r / 128),
+            Math.floor(g / 128),
+            Math.floor(b / 128)
         ];
         const key = cube.join(',');
         
