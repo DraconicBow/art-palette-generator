@@ -14,7 +14,7 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
         
         // 3. Когда изображение загрузится, генерируем палитру
         img.onload = function() {
-            const palette = getDominantColors(img, 5);
+            const palette = getDominantColors(img, 10);
             displayPalette(palette);
         };
     };
