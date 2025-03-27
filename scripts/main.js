@@ -9,7 +9,7 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
 
         img.onload = function() {
             const colorThief = new ColorThief();
-            const palette = colorThief.getPalette(img, 5); // 5 основных цветов
+            const palette = colorThief.getPalette(img, 10); // 5 основных цветов
             displayPalette(palette);
         };
     };
