@@ -21,7 +21,6 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
     reader.readAsDataURL(file);
 });
 
-// Добавлена недостающая функция displayPalette
 function displayPalette(colors) {
     const paletteDiv = document.getElementById('palette');
     paletteDiv.innerHTML = '';
@@ -35,12 +34,11 @@ function displayPalette(colors) {
     });
 }
 
-// Добавлена недостающая функция rgbToHex
 function rgbToHex(r, g, b) {
     return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
-// Остальной код функции getMainColors должен быть здесь
+// НОВАЯ ВЕРСИЯ ФУНКЦИИ GETMAINCOLORS
 function getMainColors(img, colorCount = 10) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -61,10 +59,14 @@ function getMainColors(img, colorCount = 10) {
         const a = pixels[i + 3];
 
         if (a < 128) continue;
-        const [h, s, l] = rgbToHsl(r, g, b);
-        if (l < 0.15 || l > 0.9 || s < 0.2) continue;
 
-        const key = `${Math.round(r/32)*32},${Math.round(g/32)*32},${Math.round(b/32)*32}`;
+        const [h, s, l] = rgbToHsl(r, g, b);
+        
+        // Условия фильтрации
+        if (l > 0.85 || s < 0.3) continue;
+
+        // Группировка цветов
+        const key = `${Math.round(r/24)*24},${Math.round(g/24)*24},${Math.round(b/24)*24}`;
         colorStats[key] = (colorStats[key] || 0) + 1;
     }
 
@@ -74,7 +76,11 @@ function getMainColors(img, colorCount = 10) {
             const [r2, g2, b2] = b[0].split(',').map(Number);
             const hsl1 = rgbToHsl(r1, g1, b1);
             const hsl2 = rgbToHsl(r2, g2, b2);
-            return (hsl2[1] - hsl1[1]) || (hsl2[2] - hsl1[2]) || (b[1] - a[1]);
+            
+            // Исправленная сортировка
+            const scoreA = hsl1[1] * 100 + (50 - Math.abs(hsl1[2] * 100 - 50));
+            const scoreB = hsl2[1] * 100 + (50 - Math.abs(hsl2[2] * 100 - 50));
+            return scoreB - scoreA; // Было scoreB - scoreB (ошибка)
         })
         .slice(0, colorCount)
         .map(([rgb]) => rgbToHex(...rgb.split(',').map(Number)));
