@@ -31,11 +31,12 @@ function generatePalette(img) {
     const pixels = imageData.data;
     const colorClusters = new Map();
 
-    // Уменьшенные цветовые кубы для большей точности
+    // Оптимальная кластеризация цветов
     for (let i = 0; i < pixels.length; i += 4) {
         if (pixels[i+3] < 128) continue;
 
-        const key = `${Math.floor(pixels[i]/18)},${Math.floor(pixels[i+1]/18)},${Math.floor(pixels[i+2]/18)}`;
+        // Увеличенные цветовые кубы для лучшего усреднения
+        const key = `${Math.floor(pixels[i]/12)},${Math.floor(pixels[i+1]/12)},${Math.floor(pixels[i+2]/12)}`;
         
         if (colorClusters.has(key)) {
             const cluster = colorClusters.get(key);
@@ -56,77 +57,93 @@ function generatePalette(img) {
     // Подготовка кандидатов
     const candidates = Array.from(colorClusters.values())
         .sort((a, b) => b.count - a.count)
-        .slice(0, 60)
+        .slice(0, 100)
         .map(cluster => {
             const r = Math.round(cluster.r / cluster.count);
             const g = Math.round(cluster.g / cluster.count);
             const b = Math.round(cluster.b / cluster.count);
-            return {
-                r, g, b,
-                luminance: 0.2126*r + 0.7152*g + 0.0722*b,
-                saturation: (Math.max(r, g, b) - Math.min(r, g, b)) / 255
-            };
+            const [h, s, l] = rgbToHsl(r, g, b);
+            return { r, g, b, h, s, l };
         });
 
     // Фильтрация цветов
     const palette = [];
-    const MIN_DISTANCE = 60;
+    const MIN_HUE_DIFF = 30; // Минимальная разница в оттенках
+    const MIN_DISTANCE = 40; // Общее цветовое расстояние
     
-    // Новое распределение по яркости
-    const brightnessGroups = {
-        dark: candidates.filter(c => c.luminance < 80),
-        medium: candidates.filter(c => c.luminance >= 80 && c.luminance < 200),
-        light: candidates.filter(c => c.luminance >= 200)
+    candidates.forEach(color => {
+        if (palette.length >= TARGET_COLORS) return;
+
+        // Проверка на уникальность по Hue и общему расстоянию
+        const isUnique = palette.every(existing => {
+            const hueDiff = Math.abs(existing.h - color.h);
+            const dist = colorDistance(existing, color);
+            return hueDiff > MIN_HUE_DIFF || dist > MIN_DISTANCE;
+        });
+
+        if (isUnique) {
+            palette.push(color);
+        }
+    });
+
+    // Дополнение палитры с приоритетом разных цветовых семейств
+    const colorFamilies = {
+        red: [0, 30],
+        orange: [30, 50],
+        yellow: [50, 70],
+        green: [70, 160],
+        blue: [160, 240],
+        purple: [240, 330],
+        pink: [330, 360]
     };
 
-    // Сбалансированные пропорции
-    const groupRatios = { dark: 0.3, medium: 0.5, light: 0.2 };
-    
-    for (const [groupName, ratio] of Object.entries(groupRatios)) {
-        const group = brightnessGroups[groupName];
-        const targetCount = Math.round(TARGET_COLORS * ratio);
-        
-        group.slice(0, targetCount).forEach(color => {
+    if (palette.length < TARGET_COLORS) {
+        Object.entries(colorFamilies).forEach(([family, range]) => {
             if (palette.length >= TARGET_COLORS) return;
             
-            const isUnique = palette.every(existing => 
-                colorDistance(existing, color) > MIN_DISTANCE
+            const familyColor = candidates.find(c => 
+                c.h >= range[0] && c.h < range[1] && 
+                !palette.some(p => p.h >= range[0] && p.h < range[1])
             );
             
-            // Приоритет насыщенным цветам
-            if (isUnique && color.saturation > 0.15) {
-                palette.push(color);
-            }
+            if (familyColor) palette.push(familyColor);
         });
     }
 
-    // Дополнение палитры с ограничением яркости
-    const remaining = TARGET_COLORS - palette.length;
-    if (remaining > 0) {
-        candidates
-            .filter(c => c.luminance < 220) // Исключаем слишком светлые
-            .sort((a, b) => b.saturation - a.saturation)
-            .slice(0, remaining)
-            .forEach(color => palette.push(color));
-    }
-
-    // Финальная коррекция баланса
+    // Финальная корректировка
     const finalPalette = palette
         .slice(0, TARGET_COLORS)
-        .sort((a, b) => a.luminance - b.luminance);
+        .sort((a, b) => a.l - b.l);
 
     displayPalette(finalPalette);
 }
 
 function colorDistance(c1, c2) {
-    // Улучшенная формула с учетом насыщенности
     const dr = (c1.r - c2.r) * 0.5;
     const dg = (c1.g - c2.g) * 0.8;
     const db = (c1.b - c2.b) * 0.3;
-    const ds = (c1.saturation - c2.saturation) * 50;
-    return Math.sqrt(dr*dr + dg*dg + db*db + ds*ds);
+    return Math.sqrt(dr*dr + dg*dg + db*db);
 }
 
+function rgbToHsl(r, g, b) {
+    r /= 255, g /= 255, b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+        h = s = 0;
+    } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch(max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h *= 60;
+    }
+    return [Math.round(h), s, l];
+}
 // displayPalette и rgbToHex без изменений
 function displayPalette(colors) {
     const paletteDiv = document.getElementById('palette');
