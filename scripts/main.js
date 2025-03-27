@@ -18,84 +18,107 @@ function generatePalette(img) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const maxSize = 200;
+    const TARGET_COLORS = 10; // Фиксированное количество цветов
     
-    // Масштабирование изображения для оптимизации
-    let width = img.naturalWidth;
-    let height = img.naturalHeight;
-    if (width > height && width > maxSize) {
-        height = Math.round(height * maxSize / width);
-        width = maxSize;
-    } else if (height > maxSize) {
-        width = Math.round(width * maxSize / height);
-        height = maxSize;
-    }
+    // Масштабирование изображения с сохранением пропорций
+    const scaleFactor = Math.min(maxSize / img.naturalWidth, maxSize / img.naturalHeight);
+    const width = Math.floor(img.naturalWidth * scaleFactor);
+    const height = Math.floor(img.naturalHeight * scaleFactor);
     
     canvas.width = width;
     canvas.height = height;
     ctx.drawImage(img, 0, 0, width, height);
 
-    // Получение данных пикселей
+    // Анализ цветов
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
-    const colorStats = {};
+    const colorClusters = new Map();
 
-    // Анализ цветов
+    // Кластеризация цветов с учетом прозрачности
     for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
         const a = data[i + 3];
         
-        // Пропуск полупрозрачных пикселей
         if (a < 128) continue;
+
+        // Группировка в кубы 24x24x24 (меньше кубы = больше точность)
+        const cubeKey = `${Math.floor(r/24)},${Math.floor(g/24)},${Math.floor(b/24)}`;
         
-        // Группировка цветов в кубы 32x32x32
-        const cube = [
-            Math.floor(r / 32),
-            Math.floor(g / 32),
-            Math.floor(b / 32)
-        ];
-        const key = cube.join(',');
-        
-        if (!colorStats[key]) {
-            colorStats[key] = { count: 1, r: r, g: g, b: b };
+        if (colorClusters.has(cubeKey)) {
+            const cluster = colorClusters.get(cubeKey);
+            cluster.count++;
+            cluster.r += r;
+            cluster.g += g;
+            cluster.b += b;
         } else {
-            colorStats[key].count++;
-            colorStats[key].r += r;
-            colorStats[key].g += g;
-            colorStats[key].b += b;
+            colorClusters.set(cubeKey, {
+                count: 1,
+                r: r,
+                g: g,
+                b: b
+            });
         }
     }
 
-    // Сортировка и выбор топ-цветов
-    const colors = Object.values(colorStats)
+    // Подготовка и сортировка цветов-кандидатов
+    const candidates = Array.from(colorClusters.values())
         .sort((a, b) => b.count - a.count)
-        .slice(0, 20)
-        .map(cube => ({
-            r: Math.round(cube.r / cube.count),
-            g: Math.round(cube.g / cube.count),
-            b: Math.round(cube.b / cube.count)
+        .slice(0, 50) // Берем больше кандидатов для отбора
+        .map(cluster => ({
+            r: Math.round(cluster.r / cluster.count),
+            g: Math.round(cluster.g / cluster.count),
+            b: Math.round(cluster.b / cluster.count)
         }));
 
-    // Фильтрация похожих цветов
-    const minDistance = 50;
+    // Фильтрация и выбор цветов
     const uniqueColors = [];
-    
-    for (const color of colors) {
-        if (!uniqueColors.some(existing => colorDistance(existing, color) < minDistance)) {
+    const minDistance = 40; // Уменьшенный порог для большего количества цветов
+    const blackThreshold = 40;
+
+    // Добавляем самый темный цвет
+    const darkColor = candidates.reduce((darkest, color) => {
+        const brightness = (color.r + color.g + color.b) / 3;
+        return brightness < darkest.brightness ? {color, brightness} : darkest;
+    }, {color: null, brightness: 255}).color;
+
+    if (darkColor && (darkColor.r + darkColor.g + darkColor.b)/3 < blackThreshold) {
+        uniqueColors.push(darkColor);
+    }
+
+    // Основной отбор цветов
+    for (const color of candidates) {
+        if (uniqueColors.length >= TARGET_COLORS) break;
+        
+        const isUnique = !uniqueColors.some(existing => 
+            colorDistance(existing, color) < minDistance
+        );
+        
+        if (isUnique) {
             uniqueColors.push(color);
-            if (uniqueColors.length >= 8) break;
         }
     }
 
-    displayPalette(uniqueColors);
+    // Дополнение палитры при необходимости
+    while (uniqueColors.length < TARGET_COLORS) {
+        const neutralValue = Math.floor(255 * (uniqueColors.length / TARGET_COLORS));
+        uniqueColors.push({
+            r: neutralValue,
+            g: neutralValue,
+            b: neutralValue
+        });
+    }
+
+    displayPalette(uniqueColors.slice(0, TARGET_COLORS));
 }
 
 function colorDistance(c1, c2) {
-    const dr = c1.r - c2.r;
-    const dg = c1.g - c2.g;
-    const db = c1.b - c2.b;
-    return Math.sqrt(dr * dr + dg * dg + db * db);
+    // Взвешенная метрика расстояния с учетом восприятия
+    const dr = (c1.r - c2.r) * 0.3;
+    const dg = (c1.g - c2.g) * 0.59;
+    const db = (c1.b - c2.b) * 0.11;
+    return Math.sqrt(dr*dr + dg*dg + db*db);
 }
 
 function displayPalette(colors) {
