@@ -17,26 +17,25 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
 function generatePalette(img) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    const maxSize = 300; // Увеличили размер для лучшей детализации
+    const maxSize = 300;
     const TARGET_COLORS = 10;
-    const COLOR_SENSITIVITY = 45; // Чувствительность к различию цветов
     
-    // Масштабирование с сохранением пропорций
+    // Масштабирование изображения
     const scale = Math.min(maxSize / img.width, maxSize / img.height);
     canvas.width = img.width * scale;
     canvas.height = img.height * scale;
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-    // Анализ цветов с улучшенной кластеризацией
+    // Анализ цветов
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     const colorClusters = new Map();
 
+    // Кластеризация цветов
     for (let i = 0; i < pixels.length; i += 4) {
         if (pixels[i+3] < 128) continue;
 
-        // Более точная группировка цветов
-        const key = `${Math.floor(pixels[i]/16)},${Math.floor(pixels[i+1]/16)},${Math.floor(pixels[i+2]/16)}`;
+        const key = `${Math.floor(pixels[i]/24)},${Math.floor(pixels[i+1]/24)},${Math.floor(pixels[i+2]/24)}`;
         
         if (colorClusters.has(key)) {
             const cluster = colorClusters.get(key);
@@ -54,7 +53,7 @@ function generatePalette(img) {
         }
     }
 
-    // Подготовка цветов-кандидатов
+    // Подготовка кандидатов
     const candidates = Array.from(colorClusters.values())
         .sort((a, b) => b.count - a.count)
         .slice(0, 50)
@@ -68,40 +67,46 @@ function generatePalette(img) {
             };
         });
 
-    // Умная фильтрация цветов
+    // Фильтрация цветов
     const palette = [];
-    const MIN_DISTANCE = 40;
+    const MIN_DISTANCE = 55;
     
-    // Добавляем доминирующие цвета
-    candidates.forEach(color => {
-        if (palette.length >= TARGET_COLORS) return;
-        
-        // Проверка на уникальность
-        const isUnique = palette.every(existing => 
-            colorDistance(existing, color) > MIN_DISTANCE
-        );
-        
-        // Приоритет для контрастных цветов
-        const isContrast = palette.length === 0 || 
-            palette.some(existing => Math.abs(existing.luminance - color.luminance) > 60);
+    // Распределение по яркости
+    const brightnessGroups = {
+        dark: candidates.filter(c => c.luminance < 90),
+        medium: candidates.filter(c => c.luminance >= 90 && c.luminance < 180),
+        light: candidates.filter(c => c.luminance >= 180)
+    };
 
-        if (isUnique && (isContrast || palette.length > TARGET_COLORS/2)) {
-            palette.push(color);
-        }
-    });
-
-    // Дополнение палитры при необходимости
-    if (palette.length < TARGET_COLORS) {
-        const remaining = TARGET_COLORS - palette.length;
-        const neutralColors = candidates
-            .filter(c => !palette.includes(c))
-            .sort((a, b) => a.luminance - b.luminance)
-            .slice(0, remaining);
+    // Пропорциональное добавление цветов
+    const groupRatios = { dark: 0.2, medium: 0.5, light: 0.3 };
+    
+    for (const [groupName, ratio] of Object.entries(groupRatios)) {
+        const group = brightnessGroups[groupName];
+        const targetCount = Math.round(TARGET_COLORS * ratio);
         
-        palette.push(...neutralColors);
+        group.slice(0, targetCount).forEach(color => {
+            if (palette.length >= TARGET_COLORS) return;
+            
+            const isUnique = palette.every(existing => 
+                colorDistance(existing, color) > MIN_DISTANCE
+            );
+            
+            if (isUnique) palette.push(color);
+        });
     }
 
-    // Финализация палитры
+    // Дополнение палитры при необходимости
+    const remaining = TARGET_COLORS - palette.length;
+    if (remaining > 0) {
+        candidates.sort((a, b) => b.luminance - a.luminance);
+        candidates.forEach(color => {
+            if (palette.length >= TARGET_COLORS) return;
+            if (!palette.includes(color)) palette.push(color);
+        });
+    }
+
+    // Финальная сортировка
     const finalPalette = palette
         .slice(0, TARGET_COLORS)
         .sort((a, b) => a.luminance - b.luminance);
@@ -110,14 +115,12 @@ function generatePalette(img) {
 }
 
 function colorDistance(c1, c2) {
-    // Взвешенное расстояние с учетом восприятия
-    const dr = (c1.r - c2.r) * 0.5;
-    const dg = (c1.g - c2.g) * 0.8;
-    const db = (c1.b - c2.b) * 0.3;
+    const dr = (c1.r - c2.r) * 0.6;
+    const dg = (c1.g - c2.g) * 0.6;
+    const db = (c1.b - c2.b) * 0.6;
     return Math.sqrt(dr*dr + dg*dg + db*db);
 }
 
-// Остальные функции без изменений
 function displayPalette(colors) {
     const paletteDiv = document.getElementById('palette');
     paletteDiv.innerHTML = '';
