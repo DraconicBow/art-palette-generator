@@ -1,3 +1,4 @@
+// Измененный JavaScript код
 document.getElementById('imageInput').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -20,30 +21,37 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
     reader.readAsDataURL(file);
 });
 
+function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(x => {
+        const hex = x.toString(16).padStart(2, '0');
+        return hex;
+    }).join('');
+}
+
 async function generatePalette(img) {
     const paletteContainer = document.getElementById('palette');
     paletteContainer.innerHTML = '';
 
-    // Используем актуальный синтаксис Vibrant.js
-    const vibrant = new Vibrant(img);
-    const palette = await vibrant.getPalette();
+    const colorThief = new ColorThief();
+    let palette;
     
-    // Получаем все доступные цветовые профили
-    const colorSwatches = [
-        palette.Vibrant,
-        palette.Muted,
-        palette.DarkVibrant,
-        palette.DarkMuted,
-        palette.LightVibrant,
-        palette.LightMuted
-    ];
+    try {
+        // Получаем 6 основных цветов
+        palette = colorThief.getPalette(img, 6);
+    } catch (error) {
+        console.error('Error extracting palette:', error);
+        return;
+    }
 
-    // Фильтруем пустые значения и создаем блоки
-    colorSwatches.filter(swatch => swatch).forEach(swatch => {
+    // Фильтруем возможные null-значения и преобразуем в HEX
+    palette.forEach(color => {
+        if (!color) return;
+        
+        const hex = rgbToHex(...color);
         const colorBox = document.createElement('div');
         colorBox.className = 'color-box';
-        colorBox.style.backgroundColor = swatch.hex;
-        colorBox.textContent = swatch.hex;
+        colorBox.style.backgroundColor = hex;
+        colorBox.textContent = hex;
         paletteContainer.appendChild(colorBox);
     });
 }
