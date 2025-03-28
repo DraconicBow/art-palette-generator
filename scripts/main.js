@@ -8,7 +8,7 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
         img.hidden = false;
         img.src = event.target.result;
         img.onload = function() {
-            const palette = generateMosaicPalette(img, 40, 5);
+            const palette = generateMosaicPalette(img, 60, 6);
             displayPalette(palette);
         };
     };
