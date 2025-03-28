@@ -1,78 +1,89 @@
-document.getElementById('imageInput').addEventListener('change', handleImageUpload);
-
-function handleImageUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-            generatePalette(img);
-        };
-        img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-}
+document.getElementById('imageInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                // Показываем превью изображения
+                const preview = document.getElementById('preview');
+                preview.src = event.target.result;
+                preview.hidden = false;
+                
+                // Создаем палитру
+                generatePalette(img);
+            }
+            img.src = event.target.result;
+        }
+        
+        reader.readAsDataURL(file);
+    }
+});
 
 function generatePalette(img) {
-    // Создаем канвас для анализа изображения
+    // Создаем canvas для обработки изображения
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Устанавливаем размер канваса равным размеру изображения
+    // Устанавливаем размеры canvas
     canvas.width = img.width;
     canvas.height = img.height;
+    
+    // Рисуем изображение на canvas
     ctx.drawImage(img, 0, 0);
-
-    // Получаем данные изображения с канваса
+    
+    // Получаем данные пикселей
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imageData.data;
+    const data = imageData.data;
     
-    // Массив для хранения цветов
-    const colors = [];
-
-    // Проходим по всем пикселям
-    for (let i = 0; i < pixels.length; i += 4) {
-        const r = pixels[i];
-        const g = pixels[i + 1];
-        const b = pixels[i + 2];
+    // Создаем массив цветов
+    const colorMap = new Map();
+    
+    // Проходим по пикселям с шагом для оптимизации
+    for (let i = 0; i < data.length; i += 40) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
         
-        // Добавляем цвет в массив
-        colors.push(`rgb(${r}, ${g}, ${b})`);
+        // Пропускаем прозрачные пиксели
+        if (a < 255) continue;
+        
+        // Создаем ключ цвета
+        const colorKey = `${r},${g},${b}`;
+        
+        // Учитываем частоту появления цвета
+        colorMap.set(colorKey, (colorMap.get(colorKey) || 0) + 1);
     }
-
-    // Выбираем 6 наиболее популярных цветов
-    const palette = getMostFrequentColors(colors, 6);
-
-    // Отображаем палитру
-    displayPalette(palette);
-}
-
-function getMostFrequentColors(colors, numColors) {
-    const colorCount = {};
     
-    // Подсчитываем частоту каждого цвета
+    // Преобразуем Map в массив и сортируем по частоте
+    const colors = Array.from(colorMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6) // Берем 6 самых частых цветов
+        .map(entry => entry[0].split(',').map(Number));
+    
+    // Очищаем предыдущую палитру
+    const palette = document.getElementById('palette');
+    palette.innerHTML = '';
+    
+    // Создаем цветовые блоки
     colors.forEach(color => {
-        colorCount[color] = (colorCount[color] || 0) + 1;
+        const [r, g, b] = color;
+        const hex = rgbToHex(r, g, b);
+        
+        const colorBox = document.createElement('div');
+        colorBox.className = 'color-box';
+        colorBox.style.backgroundColor = hex;
+        colorBox.textContent = hex;
+        
+        palette.appendChild(colorBox);
     });
-    
-    // Сортируем по частоте и возвращаем топ numColors
-    return Object.keys(colorCount)
-        .sort((a, b) => colorCount[b] - colorCount[a])
-        .slice(0, numColors);
 }
 
-function displayPalette(palette) {
-    const paletteContainer = document.getElementById('palette');
-    paletteContainer.innerHTML = ''; // Очищаем старую палитру
-
-    // Для каждого цвета создаем элемент
-    palette.forEach(color => {
-        const colorBox = document.createElement('div');
-        colorBox.classList.add('color-box');
-        colorBox.style.backgroundColor = color;
-        colorBox.textContent = color; // Цвет в формате rgb
-        paletteContainer.appendChild(colorBox);
-    });
+// Функция преобразования RGB в HEX
+function rgbToHex(r, g, b) {
+    return '#' + [r, g, b]
+        .map(x => x.toString(16).padStart(2, '0'))
+        .join('');
 }
