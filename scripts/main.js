@@ -37,7 +37,7 @@ async function generatePalette(img) {
     
     try {
         // Получаем 6 основных цветов
-        palette = colorThief.getPalette(img, 6);
+        palette = colorThief.getPalette(img, 12);
     } catch (error) {
         console.error('Error extracting palette:', error);
         return;
