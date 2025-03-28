@@ -18,27 +18,36 @@ function generatePalette(img) {
     const paletteContainer = document.getElementById('palette');
     paletteContainer.innerHTML = ''; // Очистка предыдущей палитры
 
-    // Используем Color Thief
-    const colorThief = new ColorThief();
-    const colorThiefPalette = colorThief.getPalette(img, 5); // 5 основных цветов
-
-    // Используем Vibrant.js
+    // Создаем экземпляр Vibrant
     const vibrant = new Vibrant(img);
+    
+    // Получаем все цветовые профили
     vibrant.getSwatches((err, swatches) => {
-        const vibrantPalette = Object.values(swatches)
-            .filter(swatch => swatch)
-            .map(swatch => swatch.getHex());
+        if (err) {
+            console.error('Ошибка анализа цветов:', err);
+            return;
+        }
 
-        // Комбинируем цвета из обеих библиотек и удаляем дубликаты
-        const allColors = [
-            ...colorThiefPalette.map(rgb => rgbToHex(rgb)),
-            ...vibrantPalette
-        ];
-        
-        const uniqueColors = [...new Set(allColors)].slice(0, 8); // Максимум 8 цветов
+        // Собираем все доступные цвета
+        const colors = [];
+        for (const swatchName in swatches) {
+            const swatch = swatches[swatchName];
+            if (swatch) {
+                colors.push({
+                    hex: swatch.getHex(),
+                    population: swatch.getPopulation() // "Вес" цвета
+                });
+            }
+        }
+
+        // Сортируем цвета по популярности и выбираем топ-6
+        const sortedColors = colors
+            .sort((a, b) => b.population - a.population)
+            .slice(0, 6)
+            .map(c => c.hex);
 
         // Отображаем палитру
-        uniqueColors.forEach(color => {
+        sortedColors.forEach(color => {
             const colorBox = document.createElement('div');
             colorBox.className = 'color-box';
             colorBox.style.backgroundColor = color;
@@ -46,11 +55,4 @@ function generatePalette(img) {
             paletteContainer.appendChild(colorBox);
         });
     });
-}
-
-// Вспомогательная функция: RGB массив → HEX строка
-function rgbToHex([r, g, b]) {
-    return '#' + [r, g, b]
-        .map(x => x.toString(16).padStart(2, '0'))
-        .join('');
 }
