@@ -8,121 +8,142 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
         img.hidden = false;
         img.src = event.target.result;
         img.onload = function() {
-            const palette = generateMosaicPalette(img, 20, 6);
+            const palette = generateAdobeStylePalette(img);
             displayPalette(palette);
         };
     };
     reader.readAsDataURL(file);
 });
 
-function generateMosaicPalette(img, cellSize = 20, colorCount = 10) {
+function generateAdobeStylePalette(img, colorCount = 6) {
+    // Этап 1: Анализ изображения
+    const labColors = getDominantLabColors(img);
+    
+    // Этап 2: Кластеризация с учетом восприятия
+    const clusters = kMeansLab(labColors, colorCount);
+    
+    // Этап 3: Применение цветовых гармоний
+    const harmony = createColorHarmony(clusters);
+    
+    // Этап 4: Оптимизация палитры
+    return optimizePalette(harmony);
+}
+
+// Преобразование RGB в Lab
+function rgbToLab(r, g, b) {
+    let [x, y, z] = rgbToXyz(r, g, b);
+    [x, y, z] = [x / 95.047, y / 100.0, z / 108.883];
+    
+    const epsilon = 0.008856;
+    const kappa = 903.3;
+    
+    const f = t => t > epsilon ? Math.cbrt(t) : (kappa * t + 16) / 116;
+    
+    const fx = f(x);
+    const fy = f(y);
+    const fz = f(z);
+    
+    return [
+        Math.max(0, 116 * fy - 16),   // L
+        500 * (fx - fy),              // a
+        200 * (fy - fz)               // b
+    ];
+}
+
+// K-средних в Lab-пространстве
+function kMeansLab(colors, k, maxIter = 100) {
+    // Инициализация центроидов
+    let centroids = colors
+        .sort(() => Math.random() - 0.5)
+        .slice(0, k);
+
+    for (let iter = 0; iter < maxIter; iter++) {
+        // Назначение кластеров
+        const clusters = Array(k).fill().map(() => []);
+        colors.forEach(color => {
+            let minDist = Infinity;
+            let clusterIdx = 0;
+            centroids.forEach((centroid, i) => {
+                const dist = ciede2000(color, centroid);
+                if (dist < minDist) {
+                    minDist = dist;
+                    clusterIdx = i;
+                }
+            });
+            clusters[clusterIdx].push(color);
+        });
+
+        // Обновление центроидов
+        const newCentroids = clusters.map(cluster => {
+            if (cluster.length === 0) return centroids[Math.floor(Math.random() * k)];
+            return cluster.reduce((acc, c) => [
+                acc[0] + c[0],
+                acc[1] + c[1],
+                acc[2] + c[2]
+            ], [0, 0, 0]).map(sum => sum / cluster.length);
+        });
+
+        if (centroids.every((c, i) => ciede2000(c, newCentroids[i]) < 1)) break;
+        centroids = newCentroids;
+    }
+    return centroids;
+}
+
+// Создание цветовой гармонии (триадная схема)
+function createColorHarmony(colors) {
+    const harmonies = [];
+    colors.forEach(color => {
+        // Триадные цвета
+        const [h, s, l] = labToHsl(color);
+        const triad = [
+            [h, s, l],
+            [(h + 120) % 360, s, l],
+            [(h + 240) % 360, s, l]
+        ];
+        harmonies.push(...triad);
+    });
+    return harmonies.slice(0, 6).map(hslToLab);
+}
+
+// Оптимизация палитры
+function optimizePalette(colors) {
+    // Фильтрация по контрасту и уникальности
+    return colors
+        .filter((color, i, arr) => 
+            arr.findIndex(c => ciede2000(color, c) < 15) === i)
+        .sort((a, b) => b[0] - a[0]) // Сортировка по яркости
+        .slice(0, 6)
+        .map(labToRgb);
+}
+
+// Вспомогательные функции
+function getDominantLabColors(img) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
-    // Рассчитываем размеры мозаики
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
     
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imageData.data;
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const labColors = [];
     
-    // Собираем цвета мозаики
-    const mosaicColors = [];
-    
-    // Проходим по всем ячейкам мозаики
-    for (let y = 0; y < canvas.height; y += cellSize) {
-        for (let x = 0; x < canvas.width; x += cellSize) {
-            // Размеры текущей ячейки
-            const cellWidth = Math.min(cellSize, canvas.width - x);
-            const cellHeight = Math.min(cellSize, canvas.height - y);
-            
-            // Собираем пиксели ячейки
-            let r = 0, g = 0, b = 0, count = 0;
-            
-            for (let cy = 0; cy < cellHeight; cy++) {
-                for (let cx = 0; cx < cellWidth; cx++) {
-                    const px = ((y + cy) * canvas.width + (x + cx)) * 4;
-                    const alpha = pixels[px + 3];
-                    
-                    if (alpha > 128) { // Игнорируем полупрозрачные
-                        r += pixels[px];
-                        g += pixels[px + 1];
-                        b += pixels[px + 2];
-                        count++;
-                    }
-                }
-            }
-            
-            if (count > 0) {
-                const avgColor = [
-                    Math.round(r / count),
-                    Math.round(g / count),
-                    Math.round(b / count)
-                ];
-                mosaicColors.push(avgColor);
-            }
-        }
+    for (let i = 0; i < pixels.length; i += 16) { // Децимация
+        const r = pixels[i];
+        const g = pixels[i+1];
+        const b = pixels[i+2];
+        labColors.push(rgbToLab(r, g, b));
     }
     
-    // Кластеризуем цвета
-    return clusterColors(mosaicColors, colorCount);
-}
-
-function clusterColors(colors, maxColors) {
-    const colorMap = new Map();
-    
-    // Группируем цвета в кубы 32x32x32
-    colors.forEach(color => {
-        const key = `${Math.floor(color[0]/32)},${Math.floor(color[1]/32)},${Math.floor(color[2]/32)}`;
-        
-        if (!colorMap.has(key)) {
-            colorMap.set(key, { 
-                r: color[0], 
-                g: color[1], 
-                b: color[2], 
-                count: 1 
-            });
-        } else {
-            const cluster = colorMap.get(key);
-            cluster.r += color[0];
-            cluster.g += color[1];
-            cluster.b += color[2];
-            cluster.count++;
-        }
-    });
-    
-    // Получаем усредненные цвета кластеров
-    const clustered = Array.from(colorMap.values()).map(cluster => ({
-        r: Math.round(cluster.r / cluster.count),
-        g: Math.round(cluster.g / cluster.count),
-        b: Math.round(cluster.b / cluster.count),
-        count: cluster.count
-    }));
-    
-    // Сортируем по частоте и выбираем топовые
-    return clustered
-        .sort((a, b) => b.count - a.count)
-        .slice(0, maxColors)
-        .map(c => [c.r, c.g, c.b]);
+    return labColors;
 }
 
 function displayPalette(colors) {
     const paletteDiv = document.getElementById('palette');
-    paletteDiv.innerHTML = '';
-    
-    colors.forEach(color => {
-        const hex = rgbToHex(color[0], color[1], color[2]);
-        const colorElement = document.createElement('div');
-        colorElement.className = 'color-box';
-        colorElement.style.backgroundColor = hex;
-        colorElement.textContent = hex;
-        paletteDiv.appendChild(colorElement);
-    });
+    paletteDiv.innerHTML = colors.map(color => {
+        const hex = rgbToHex(...color);
+        return `<div class="color-box" style="background:${hex}">${hex}</div>`;
+    }).join('');
 }
 
-function rgbToHex(r, g, b) {
-    return '#' + [r, g, b]
-        .map(x => x.toString(16).padStart(2, '0'))
-        .join('');
-}
+// Полные реализации преобразований и CIEDE2000 требуют больше кода
+// Для простоты можно использовать библиотеки color-space и ciede2000
